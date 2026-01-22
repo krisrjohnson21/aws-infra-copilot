@@ -1,0 +1,135 @@
+{
+  "manifest_version": "0.2",
+  "name": "aws-infra-copilot",
+  "display_name": "AWS Infrastructure Copilot",
+  "version": "1.0.0",
+  "description": "Query AWS IAM, ECS, S3, and Lambda resources conversationally through Claude",
+  "long_description": "An MCP server that lets you ask natural language questions about your AWS infrastructure. Supports IAM (users, roles, access keys, admin access auditing), ECS (clusters, services, tasks, task definitions), S3 (buckets, encryption, public access, object search), and Lambda (functions, deprecated runtime detection).",
+  "author": {
+    "name": "Kris Johnson",
+    "url": "https://github.com/krisrjohnson21"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/krisrjohnson21/aws-infra-copilot"
+  },
+  "license": "MIT",
+  "server": {
+    "type": "python",
+    "entry_point": "server.py",
+    "mcp_config": {
+      "command": "python",
+      "args": ["${__dirname}/server.py"],
+      "env": {
+        "AWS_PROFILE": "${user_config.aws_profile}",
+        "AWS_REGION": "${user_config.aws_region}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "list_iam_users",
+      "description": "List all IAM users in the AWS account"
+    },
+    {
+      "name": "list_users_with_stale_credentials",
+      "description": "Find users with access keys older than specified days"
+    },
+    {
+      "name": "list_users_with_admin_access",
+      "description": "Find users with AdministratorAccess policy"
+    },
+    {
+      "name": "list_iam_roles",
+      "description": "List IAM roles, optionally filtered by path"
+    },
+    {
+      "name": "get_role_trust_policy",
+      "description": "Get the trust policy for an IAM role"
+    },
+    {
+      "name": "list_access_keys",
+      "description": "List access keys for users with age and last used info"
+    },
+    {
+      "name": "list_ecs_clusters",
+      "description": "List all ECS clusters"
+    },
+    {
+      "name": "list_ecs_services",
+      "description": "List services in an ECS cluster"
+    },
+    {
+      "name": "get_ecs_service_status",
+      "description": "Get detailed status of an ECS service"
+    },
+    {
+      "name": "list_ecs_tasks",
+      "description": "List running tasks in a cluster"
+    },
+    {
+      "name": "describe_task_definition",
+      "description": "Get details of an ECS task definition"
+    },
+    {
+      "name": "list_fargate_retirements",
+      "description": "Find Fargate tasks scheduled for retirement in next N days"
+    },
+    {
+      "name": "list_s3_buckets",
+      "description": "List all S3 buckets with region info"
+    },
+    {
+      "name": "get_bucket_size",
+      "description": "Get object count and total size for a bucket"
+    },
+    {
+      "name": "check_bucket_public_access",
+      "description": "Audit buckets for public access settings"
+    },
+    {
+      "name": "find_object",
+      "description": "Search across buckets for an object by name"
+    },
+    {
+      "name": "get_bucket_encryption",
+      "description": "Check encryption configuration for buckets"
+    },
+    {
+      "name": "list_lambda_functions",
+      "description": "List all Lambda functions with runtime and deprecation status"
+    },
+    {
+      "name": "find_deprecated_runtimes",
+      "description": "Find Lambda functions using deprecated or EOL runtimes"
+    },
+    {
+      "name": "get_lambda_function",
+      "description": "Get detailed information about a specific Lambda function"
+    },
+    {
+      "name": "list_lambda_runtimes",
+      "description": "List all known Lambda runtimes with deprecation status"
+    }
+  ],
+  "keywords": ["aws", "infrastructure", "iam", "ecs", "s3", "lambda", "devops", "cloud"],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"]
+  },
+  "user_config": {
+    "aws_profile": {
+      "type": "string",
+      "title": "AWS Profile",
+      "description": "AWS credentials profile name (leave empty for default)",
+      "required": false,
+      "default": ""
+    },
+    "aws_region": {
+      "type": "string",
+      "title": "AWS Region",
+      "description": "Default AWS region (e.g., us-east-1)",
+      "required": false,
+      "default": "us-east-1"
+    }
+  }
+}
