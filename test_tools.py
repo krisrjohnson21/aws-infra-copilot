@@ -39,7 +39,7 @@ def main():
         list_users_with_stale_credentials,
         list_users_with_admin_access,
     )
-    from tools.ecs import list_ecs_clusters
+    from tools.ecs import list_ecs_clusters, list_fargate_retirements
     from tools.s3 import (
         list_s3_buckets,
         check_bucket_public_access,
@@ -86,10 +86,36 @@ def main():
         else:
             print(f"   ✓ list_ecs_clusters: Found {result['cluster_count']} clusters")
             if result["clusters"]:
-                for cluster in result["clusters"]:
+                for cluster in result["clusters"][:5]:  # Show first 5
                     print(f"      - {cluster['name']} ({cluster['running_tasks']} running tasks)")
+                if len(result["clusters"]) > 5:
+                    print(f"      ... and {len(result['clusters']) - 5} more")
     except Exception as e:
         print(f"   ✗ list_ecs_clusters exception: {e}")
+
+    try:
+        result = list_fargate_retirements(days=14)
+        if "error" in result:
+            # SubscriptionRequiredException is expected without Business/Enterprise support
+            if "Business or Enterprise support" in result.get("error", ""):
+                print(f"   ⚠ list_fargate_retirements: Requires Business/Enterprise support plan")
+            else:
+                print(f"   ✗ list_fargate_retirements error: {result['error']}")
+        else:
+            print(f"   ✓ list_fargate_retirements: Found {result['retirement_count']} retirements in next 14 days")
+            if result["retirement_count"] > 0:
+                # Count production services
+                prod_count = sum(
+                    1 for r in result["retirements"]
+                    if r.get("service") and "-prod" in r.get("service", "")
+                )
+                if prod_count > 0:
+                    print(f"      ⚠ {prod_count} production services affected!")
+                # Show by cluster
+                for cluster, retirements in result.get("retirements_by_cluster", {}).items():
+                    print(f"      - {cluster}: {len(retirements)} service(s)")
+    except Exception as e:
+        print(f"   ✗ list_fargate_retirements exception: {e}")
 
     # Test S3 tools
     print("\n4. Testing S3 tools...")

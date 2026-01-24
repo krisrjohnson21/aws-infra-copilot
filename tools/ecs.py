@@ -259,7 +259,7 @@ def describe_task_definition(task_definition: str) -> dict[str, Any]:
 @mcp.tool()
 def list_fargate_retirements(days: int = 14) -> dict[str, Any]:
     """
-    Find Fargate tasks scheduled for retirement due to AWS maintenance.
+    Find ECS tasks and services scheduled for retirement due to AWS maintenance.
     Requires AWS Business or Enterprise support plan for Health API access.
 
     Args:
@@ -276,17 +276,15 @@ def list_fargate_retirements(days: int = 14) -> dict[str, Any]:
     end_time = now + timedelta(days=days)
 
     try:
-        # Query for ECS-related scheduled maintenance events
         event_filter = {
-            "services": ["ECS"],
             "eventTypeCategories": ["scheduledChange"],
             "eventStatusCodes": ["open", "upcoming"],
         }
 
         events = []
-        paginator = health.get_paginator("describe_events")
+        events_paginator = health.get_paginator("describe_events")
 
-        for page in paginator.paginate(filter=event_filter):
+        for page in events_paginator.paginate(filter=event_filter):
             for event in page["events"]:
                 # Check if event is within our time window
                 event_start = event.get("startTime")
@@ -297,7 +295,7 @@ def list_fargate_retirements(days: int = 14) -> dict[str, Any]:
             return {
                 "days_checked": days,
                 "retirement_count": 0,
-                "message": "No Fargate task retirements scheduled in the specified time window",
+                "retirements_by_cluster": {},
                 "retirements": [],
             }
 
@@ -305,39 +303,66 @@ def list_fargate_retirements(days: int = 14) -> dict[str, Any]:
         retirements = []
         for event in events:
             event_arn = event["arn"]
-            
+
             try:
-                affected = health.describe_affected_entities(
-                    filter={"eventArns": [event_arn]}
-                )
-                
-                for entity in affected.get("entities", []):
+                affected_entities = []
+                entities_paginator = health.get_paginator("describe_affected_entities")
+
+                for page in entities_paginator.paginate(filter={"eventArns": [event_arn]}):
+                    affected_entities.extend(page.get("entities", []))
+
+                for entity in affected_entities:
                     entity_value = entity.get("entityValue", "")
-                    
-                    # Filter for Fargate tasks (task ARNs contain "/task/")
-                    if "/task/" in entity_value or "fargate" in event.get("eventTypeCode", "").lower():
+
+                    is_ecs_task_retirement = (
+                        "ECS" in event.get("service", "")
+                        and "RETIREMENT" in event.get("eventTypeCode", "")
+                    )
+
+                    # Filter for ECS tasks and services
+                    if "/task/" in entity_value or is_ecs_task_retirement:
+                        # Parse entity format
+                        if "|" in entity_value:
+                            # Format: cluster|service
+                            parts = entity_value.split("|")
+                            cluster = parts[0]
+                            service = parts[1] if len(parts) > 1 else None
+                        elif "/task/" in entity_value:
+                            # Format: arn:aws:ecs:region:account:task/cluster-name/task-id
+                            parts = entity_value.split("/")
+                            cluster = parts[1] if len(parts) > 1 else "unknown"
+                            service = None
+                        else:
+                            cluster = "unknown"
+                            service = None
+
                         retirements.append(
                             {
-                                "task_arn": entity_value,
+                                "entity": entity_value,
+                                "cluster": cluster,
+                                "service": service,
                                 "event_type": event.get("eventTypeCode"),
                                 "status": entity.get("statusCode"),
-                                "scheduled_start": event.get("startTime").isoformat() if event.get("startTime") else None,
-                                "scheduled_end": event.get("endTime").isoformat() if event.get("endTime") else None,
+                                "scheduled_start": (
+                                    event.get("startTime").isoformat()
+                                    if event.get("startTime") else None
+                                ),
+                                "scheduled_end": (
+                                    event.get("endTime").isoformat()
+                                    if event.get("endTime") else None
+                                ),
                                 "description": event.get("eventTypeCode", "").replace("_", " ").title(),
                             }
                         )
-            except ClientError as e:
+            except ClientError:
                 # Continue if we can't get details for a specific event
                 continue
 
         # Group by cluster for easier reading
         by_cluster = {}
         for ret in retirements:
-            # Extract cluster from task ARN
-            # Format: arn:aws:ecs:region:account:task/cluster-name/task-id
-            arn_parts = ret["task_arn"].split("/")
-            cluster = arn_parts[1] if len(arn_parts) > 1 else "unknown"
-            
+            cluster = ret["cluster"]
+
             if cluster not in by_cluster:
                 by_cluster[cluster] = []
             by_cluster[cluster].append(ret)
